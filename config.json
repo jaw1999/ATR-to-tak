@@ -1,0 +1,10 @@
+{
+    "latitude": 47.1234,
+    "longitude": -122.5678,
+    "cot_host": "127.0.0.1",
+    "cot_port": 6969,
+    "callsign": "PiDetector",
+    "confidence_threshold": 0.5,
+    "objects_to_detect": ["person", "car"],
+    "reset_timer": 300
+} 

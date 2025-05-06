@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Object Detector Control</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background-color: #1e1e1e;
+            color: #ffffff;
+        }
+        .form-group { 
+            margin-bottom: 20px;
+            background-color: #2d2d2d;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        label { 
+            display: block; 
+            margin-bottom: 8px;
+            color: #4CAF50;
+        }
+        input, select { 
+            width: 100%; 
+            padding: 10px;
+            background-color: #3d3d3d;
+            border: 1px solid #4CAF50;
+            color: white;
+            border-radius: 4px;
+        }
+        select {
+            height: 200px;
+        }
+        select option {
+            padding: 5px;
+        }
+        select option:checked {
+            background-color: #4CAF50;
+        }
+        button { 
+            padding: 12px 24px; 
+            margin: 5px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #status { 
+            margin-top: 20px; 
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #2d2d2d;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #confidence {
+            flex-grow: 1;
+        }
+        #confidence_value {
+            min-width: 40px;
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <h1>Object Detector Control</h1>
+    
+    <div class="form-group">
+        <label>Latitude:</label>
+        <input type="number" id="latitude" step="0.0001" value="0.0">
+    </div>
+    
+    <div class="form-group">
+        <label>Longitude:</label>
+        <input type="number" id="longitude" step="0.0001" value="0.0">
+    </div>
+    
+    <div class="form-group">
+        <label>CoT Host:</label>
+        <input type="text" id="cot_host" value="127.0.0.1">
+    </div>
+    
+    <div class="form-group">
+        <label>CoT Port:</label>
+        <input type="number" id="cot_port" value="6969">
+    </div>
+    
+    <div class="form-group">
+        <label>Camera Source:</label>
+        <select id="camera_source">
+            <!-- Will be populated by JavaScript -->
+        </select>
+        <input type="text" id="rtsp_url" placeholder="rtsp://..." style="display: none; margin-top: 10px;">
+    </div>
+    
+    <div class="form-group">
+        <label>Display Options:</label>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="checkbox" id="show_video" style="width: auto;" checked>
+            <span>Show Video Feed</span>
+        </div>
+    </div>
+    
+    <div class="form-group">
+        <label>Detection Reset Timer (seconds):</label>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="number" id="reset_timer" value="0" min="0" step="1">
+            <span>0 = no reset</span>
+        </div>
+    </div>
+    
+    <div class="form-group">
+        <label>Detection Name:</label>
+        <input type="text" id="callsign" value="Detection1">
+    </div>
+    
+    <div class="form-group">
+        <label>Confidence Threshold:</label>
+        <div class="slider-container">
+            <input type="range" id="confidence" min="0" max="1" step="0.1" value="0.5">
+            <span id="confidence_value">0.5</span>
+        </div>
+    </div>
+    
+    <div class="form-group">
+        <label>Objects to Detect (hold Ctrl to select multiple):</label>
+        <select id="objects" multiple>
+            <!-- Will be populated by JavaScript -->
+        </select>
+    </div>
+    
+    <button onclick="startDetector()">Start Detector</button>
+    <button onclick="stopDetector()">Stop Detector</button>
+    
+    <div id="status">Status: Not running</div>
+
+    <script>
+        // Update confidence value display
+        document.getElementById('confidence').oninput = function() {
+            document.getElementById('confidence_value').textContent = this.value;
+        };
+        
+        // Populate object list
+        fetch('/objects')
+            .then(response => response.json())
+            .then(objects => {
+                const select = document.getElementById('objects');
+                objects.forEach(obj => {
+                    const option = document.createElement('option');
+                    option.value = obj;
+                    option.text = obj;
+                    select.appendChild(option);
+                });
+            });
+        
+        // Populate camera list
+        fetch('/cameras')
+            .then(response => response.json())
+            .then(cameras => {
+                const select = document.getElementById('camera_source');
+                // Clear existing options
+                select.innerHTML = '';
+                // Add available cameras
+                cameras.forEach(camera => {
+                    const option = document.createElement('option');
+                    option.value = camera.id;
+                    option.text = camera.name;
+                    select.appendChild(option);
+                });
+                // Add RTSP option
+                const rtspOption = document.createElement('option');
+                rtspOption.value = 'rtsp';
+                rtspOption.text = 'RTSP Stream';
+                select.appendChild(rtspOption);
+            });
+        
+        document.getElementById('camera_source').onchange = function() {
+            document.getElementById('rtsp_url').style.display = 
+                this.value === 'rtsp' ? 'block' : 'none';
+        };
+        
+        function getConfig() {
+            const cameraSource = document.getElementById('camera_source').value;
+            const rtspUrl = document.getElementById('rtsp_url').value;
+            
+            return {
+                latitude: parseFloat(document.getElementById('latitude').value),
+                longitude: parseFloat(document.getElementById('longitude').value),
+                cot_host: document.getElementById('cot_host').value,
+                cot_port: parseInt(document.getElementById('cot_port').value),
+                callsign: document.getElementById('callsign').value,
+                confidence: parseFloat(document.getElementById('confidence').value),
+                selected_objects: Array.from(document.getElementById('objects').selectedOptions).map(o => o.value),
+                camera_source: cameraSource === 'rtsp' ? rtspUrl : parseInt(cameraSource),
+                show_video: document.getElementById('show_video').checked,
+                reset_timer: parseInt(document.getElementById('reset_timer').value) || 0
+            };
+        }
+        
+        function startDetector() {
+            fetch('/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(getConfig())
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status').textContent = `Status: ${data.message}`;
+            });
+        }
+        
+        function stopDetector() {
+            fetch('/stop', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('status').textContent = `Status: ${data.message}`;
+            });
+        }
+        
+        // Update status periodically
+        setInterval(() => {
+            fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('status').textContent = 
+                        `Status: ${data.running ? 'Running' : 'Not running'}`;
+                });
+        }, 1000);
+    </script>
+</body>
+</html> 
